@@ -1,0 +1,9 @@
+{
+  "name": "LifePlan",
+  "description": "Transform your goals into clear, actionable daily plans using Gemini's advanced reasoning and real-time adaptation.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ]
+}
