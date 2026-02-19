@@ -1,6 +1,6 @@
 
-import React, { useState, useEffect } from 'react';
-import { AppStep, LifePlanData, GoalHistoryItem, User } from './types';
+import React, { useState, useEffect, useRef } from 'react';
+import { AppStep, LifePlanData, GoalHistoryItem, User, Task } from './types';
 import { LoginScreen } from './screens/LoginScreen';
 import { WelcomeScreen } from './screens/WelcomeScreen';
 import { SetupScreen } from './screens/SetupScreen';
@@ -18,6 +18,8 @@ const App: React.FC = () => {
   const [plan, setPlan] = useState<LifePlanData | null>(null);
   const [history, setHistory] = useState<GoalHistoryItem[]>([]);
   const [isDarkMode, setIsDarkMode] = useState(false);
+  const [lastNotifiedTaskId, setLastNotifiedTaskId] = useState<string | null>(null);
+  const checkIntervalRef = useRef<number | null>(null);
 
   // Persistence and Dark Mode initialization
   useEffect(() => {
@@ -54,6 +56,55 @@ const App: React.FC = () => {
     }
   }, []);
 
+  // Notification logic
+  useEffect(() => {
+    if (!user?.notificationsEnabled || !plan) {
+      if (checkIntervalRef.current) clearInterval(checkIntervalRef.current);
+      return;
+    }
+
+    const checkTasks = () => {
+      const now = new Date();
+      const todayStr = now.toISOString().split('T')[0];
+      const currentHours = now.getHours();
+      const currentMinutes = now.getMinutes();
+
+      const todayTasks: Task[] = [];
+      plan.macroSteps.forEach(step => {
+        step.tasks.forEach(task => {
+          if (task.date === todayStr && !task.completed && task.startTime) {
+            todayTasks.push(task);
+          }
+        });
+      });
+
+      todayTasks.forEach(task => {
+        if (!task.startTime) return;
+        const [taskH, taskM] = task.startTime.split(':').map(Number);
+        
+        // Alert if task is due in the next 5 minutes or already overdue by less than 5 mins
+        const taskTimeMinutes = taskH * 60 + taskM;
+        const currentTimeMinutes = currentHours * 60 + currentMinutes;
+        const diff = taskTimeMinutes - currentTimeMinutes;
+
+        if (diff <= 5 && diff >= -1 && task.id !== lastNotifiedTaskId) {
+          if (Notification.permission === 'granted') {
+            new Notification('LifePlan: Hora da tarefa!', {
+              body: `Está na hora de: ${task.title}`,
+              icon: 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png'
+            });
+            setLastNotifiedTaskId(task.id);
+          }
+        }
+      });
+    };
+
+    checkIntervalRef.current = window.setInterval(checkTasks, 30000); // Check every 30s
+    return () => {
+      if (checkIntervalRef.current) clearInterval(checkIntervalRef.current);
+    };
+  }, [user?.notificationsEnabled, plan, lastNotifiedTaskId]);
+
   useEffect(() => {
     if (plan) {
       localStorage.setItem('lifeplan_data', JSON.stringify(plan));
@@ -76,6 +127,22 @@ const App: React.FC = () => {
       document.documentElement.classList.remove('dark');
       localStorage.setItem('lifeplan_theme', 'light');
     }
+  };
+
+  const toggleNotifications = async () => {
+    if (!user) return;
+    
+    if (!user.notificationsEnabled) {
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') {
+        alert('Permissão de notificações negada.');
+        return;
+      }
+    }
+
+    const updatedUser: User = { ...user, notificationsEnabled: !user.notificationsEnabled };
+    setUser(updatedUser);
+    localStorage.setItem('lifeplan_user', JSON.stringify(updatedUser));
   };
 
   const handleLogin = (userData: User) => {
@@ -163,15 +230,27 @@ const App: React.FC = () => {
           </button>
           <div className="flex items-center gap-2">
             {user && (
-              <button 
-                onClick={() => setStep(AppStep.History)}
-                className="p-2 rounded-lg bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:scale-110 active:scale-95 transition-all"
-                aria-label="Ver histórico"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
-                </svg>
-              </button>
+              <>
+                <button 
+                  onClick={toggleNotifications}
+                  className={`p-2 rounded-lg transition-all ${user.notificationsEnabled ? 'bg-indigo-100 text-indigo-600 dark:bg-indigo-900/40 dark:text-indigo-400' : 'bg-slate-200 dark:bg-slate-800 text-slate-400'}`}
+                  aria-label="Notificações"
+                  title={user.notificationsEnabled ? "Notificações ligadas" : "Notificações desligadas"}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                    <path d="M10 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 004 14h12a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6zM10 18a3 3 0 01-3-3h6a3 3 0 01-3 3z" />
+                  </svg>
+                </button>
+                <button 
+                  onClick={() => setStep(AppStep.History)}
+                  className="p-2 rounded-lg bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:scale-110 active:scale-95 transition-all"
+                  aria-label="Ver histórico"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
+                  </svg>
+                </button>
+              </>
             )}
             <button 
               onClick={toggleDarkMode}

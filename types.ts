@@ -6,6 +6,7 @@ export interface Task {
   durationMinutes: number;
   completed: boolean;
   date: string;
+  startTime?: string; // Formato HH:mm
 }
 
 export interface MacroStep {
@@ -35,6 +36,7 @@ export interface User {
   id: string;
   email: string;
   provider: 'google' | 'apple' | 'email';
+  notificationsEnabled?: boolean;
 }
 
 export enum AppStep {
